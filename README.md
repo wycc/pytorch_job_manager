@@ -115,6 +115,10 @@ manager.delete_job()
 - kubernetes >= 20.0.0
 - kubeflow-training >= 1.7.0
 
+## TODO
+* 支援使用 affinity 選擇 GPU
+
+
 ## 授權
 
 MIT License
