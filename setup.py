@@ -13,7 +13,7 @@ long_description = (this_directory / "README.md").read_text(encoding='utf-8')
 
 setup(
     name="pytorch-job-manager",
-    version="0.1.0",
+    version="0.1.1",
     author="Your Name",
     author_email="your.email@example.com",
     description="A package for managing PyTorch distributed training jobs on Kubeflow",

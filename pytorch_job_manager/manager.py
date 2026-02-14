@@ -4,14 +4,14 @@ import textwrap
 import os
 import kubernetes
 
-from kubernetes.client import V1ResourceRequirements, V1VolumeMount, V1Volume, V1PersistentVolumeClaimVolumeSource, V1Container, V1PodSpec, V1PodTemplateSpec, V1ObjectMeta
+from kubernetes.client import V1ResourceRequirements, V1VolumeMount, V1Volume, V1PersistentVolumeClaimVolumeSource, V1Container, V1PodSpec, V1PodTemplateSpec, V1ObjectMeta, V1Affinity, V1NodeAffinity, V1NodeSelector, V1NodeSelectorTerm, V1NodeSelectorRequirement
 from kubeflow.training import TrainingClient
 from kubeflow.training.models import KubeflowOrgV1ReplicaSpec, KubeflowOrgV1PyTorchJob, KubeflowOrgV1PyTorchJobSpec, KubeflowOrgV1RunPolicy
 from kubeflow.training.constants import constants
 
 class PyTorchJobManager:
     def __init__(self, namespace=None, name="pytorch-dist-mnist-gloo", image=None, command=None, working_dir=None,
-                 cpu="4", memory="8Gi", gpu="1", worker_replicas=4):
+                 cpu="4", memory="8Gi", gpu="1", worker_replicas=4, affinity=None):
         self.namespace = namespace
         self.name = name
         self.container_name = "pytorch"
@@ -25,6 +25,55 @@ class PyTorchJobManager:
         self.memory = memory
         self.gpu = gpu
         self.worker_replicas = worker_replicas
+        self.affinity = affinity
+
+    # 解析 affinity 參數並建立 V1Affinity 物件
+    def _parse_affinity(self):
+        """
+        解析 affinity 參數，支援兩種格式：
+        1. hostname:rtxpro6000 - 指定到特定節點
+        2. gpu.product:NVIDIA-RTX-A5000 - 根據 GPU 產品指定
+        """
+        if not self.affinity:
+            return None
+        
+        try:
+            # 解析參數格式 "key:value"
+            if ':' not in self.affinity:
+                raise ValueError(f"Invalid affinity format: {self.affinity}. Expected format: 'hostname:value' or 'gpu.product:value'")
+            
+            affinity_type, affinity_value = self.affinity.split(':', 1)
+            
+            # 根據類型設定對應的 key
+            if affinity_type == 'hostname':
+                key = 'kubernetes.io/hostname'
+            elif affinity_type == 'gpu.product':
+                key = 'nvidia.com/gpu.product'
+            else:
+                raise ValueError(f"Unsupported affinity type: {affinity_type}. Supported types: 'hostname', 'gpu.product'")
+            
+            # 建立 NodeAffinity
+            node_affinity = V1NodeAffinity(
+                required_during_scheduling_ignored_during_execution=V1NodeSelector(
+                    node_selector_terms=[
+                        V1NodeSelectorTerm(
+                            match_expressions=[
+                                V1NodeSelectorRequirement(
+                                    key=key,
+                                    operator='In',
+                                    values=[affinity_value]
+                                )
+                            ]
+                        )
+                    ]
+                )
+            )
+            
+            return V1Affinity(node_affinity=node_affinity)
+        
+        except Exception as e:
+            print(f"Error parsing affinity: {e}")
+            return None
 
     # 建立 PyTorch 工作
     def create_pytorch_job(self):
@@ -93,6 +142,9 @@ class PyTorchJobManager:
             volume_mounts=[volume_mount],
         )
 
+        # 解析 affinity 設定
+        pod_affinity = self._parse_affinity()
+
         replica_spec = KubeflowOrgV1ReplicaSpec(
             replicas=self.worker_replicas,
             restart_policy="OnFailure",
@@ -109,7 +161,8 @@ class PyTorchJobManager:
                     volumes=[V1Volume(
                         name="model-volume",
                         persistent_volume_claim=V1PersistentVolumeClaimVolumeSource(claim_name=volume_claim_name)
-                    )]
+                    )],
+                    affinity=pod_affinity
                 )
             )
         )
@@ -130,7 +183,8 @@ class PyTorchJobManager:
                     volumes=[V1Volume(
                         name="model-volume",
                         persistent_volume_claim=V1PersistentVolumeClaimVolumeSource(claim_name=volume_claim_name)
-                    )]
+                    )],
+                    affinity=pod_affinity
                 )
             )
         )
