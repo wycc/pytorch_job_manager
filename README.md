@@ -129,7 +129,7 @@ MIT License
 
 ## 作者
 
-Your Name - your.email@example.com
+Yu-Chung Wang - wycca1@gmail.com
 
 ## 更新日誌
 
